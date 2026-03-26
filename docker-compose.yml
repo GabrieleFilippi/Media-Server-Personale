@@ -73,6 +73,9 @@ services:
       - ${CONFIG_DIR}/prowlarr:/config
     ports:
       - "9696:9696"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     restart: unless-stopped
     networks:
       - mediaserver
@@ -95,6 +98,9 @@ services:
       - "8080:8080"
       - "6881:6881"
       - "6881:6881/udp"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     restart: unless-stopped
     networks:
       - mediaserver
@@ -108,6 +114,9 @@ services:
       - TZ=${TZ}
     ports:
       - "8191:8191"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     restart: unless-stopped
     networks:
       - mediaserver

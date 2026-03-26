@@ -13,11 +13,19 @@ Stack Docker self-hosted per scaricare e guardare film e serie TV da un portale 
 | qBittorrent | 8080 | Client torrent |
 | FlareSolverr | 8191 | Bypass Cloudflare |
 
+> **Nota DNS:** In Italia gli ISP bloccano i siti torrent tramite DNS. Il `docker-compose.yml` configura gia' DNS alternativi (1.1.1.1, 8.8.8.8) su Prowlarr, FlareSolverr e qBittorrent per aggirare il blocco.
+
 ## Prerequisiti
 
 - Docker e Docker Compose installati
 - Un disco o partizione dedicata per i media (consigliato)
 - Porte 8096, 7878, 8989, 9696, 8080, 8191 libere
+
+## DNS e blocco ISP
+
+Gli ISP italiani bloccano i siti di indexer torrent a livello DNS, risolvendo i domini a `127.0.0.1`. Per aggirare il problema, nel `docker-compose.yml` i container che necessitano di accesso esterno (Prowlarr, FlareSolverr, qBittorrent) usano i DNS di Cloudflare (`1.1.1.1`) e Google (`8.8.8.8`).
+
+Non serve alcuna configurazione aggiuntiva: e' gia' tutto impostato.
 
 ## Installazione
 
@@ -68,6 +76,7 @@ Segui questi passaggi **nell'ordine indicato** dopo il primo avvio.
    - Tag: `flaresolverr`
    - Host: `http://flaresolverr:8191`
 3. Vai in **Indexers > Add Indexer** e aggiungi gli indexer che preferisci (es. 1337x, The Pirate Bay, EZTV, Torrentz2)
+   - Per contenuti in italiano, aggiungi indexer italiani come **ilCorSaRoNeRo** (consigliato)
    - Per gli indexer protetti da Cloudflare, assegna il tag `flaresolverr`
 4. Vai in **Settings > Apps** e aggiungi Radarr e Sonarr:
    - **Radarr**: Prowlarr Server = `http://prowlarr:9696`, Radarr Server = `http://radarr:7878`, API Key = (copiala da Radarr > Settings > General)
@@ -129,7 +138,34 @@ Per aggiungere una serie: **Series > Add New** e cerca il titolo.
    - Lingua: Italian
    - Paese: Italy
 
-Jellyfin e' ora accessibile da qualsiasi dispositivo sulla tua rete locale all'indirizzo `http://<IP-SERVER>:8096`.
+## Accesso da altri dispositivi
+
+Tutti i dispositivi connessi alla stessa rete Wi-Fi/LAN possono accedere ai servizi. Sostituisci `<IP-SERVER>` con l'IP locale della macchina che esegue lo stack:
+
+```bash
+# Trova l'IP locale del server
+ip -4 addr show | grep -oP '(?<=inet\s)192\.168\.\S+'
+# oppure
+hostname -I
+```
+
+| Servizio | URL |
+|---|---|
+| Jellyfin (streaming) | `http://<IP-SERVER>:8096` |
+| Radarr (film) | `http://<IP-SERVER>:7878` |
+| Sonarr (serie TV) | `http://<IP-SERVER>:8989` |
+| Prowlarr (indexer) | `http://<IP-SERVER>:9696` |
+| qBittorrent | `http://<IP-SERVER>:8080` |
+
+Per la maggior parte degli utenti basta condividere solo l'indirizzo di **Jellyfin** — e' l'unico portale necessario per guardare i contenuti. Le altre porte servono solo per l'amministrazione.
+
+> **Tip:** Su smartphone/tablet/TV, l'app [Jellyfin](https://jellyfin.org/downloads) e' disponibile per Android, iOS, Android TV, Fire TV, Roku e altri. Inserisci `http://<IP-SERVER>:8096` come indirizzo del server.
+
+## Preferenza lingua italiana
+
+Radarr e Sonarr hanno un Custom Format "Italian" configurato con punteggio +1000. Questo fa si' che i rilasci in italiano vengano preferiti automaticamente, ma se non ne esistono viene scaricata la versione in lingua originale.
+
+Per modificare questo comportamento, vai in **Settings > Custom Formats** su Radarr o Sonarr.
 
 ## Comandi utili
 
