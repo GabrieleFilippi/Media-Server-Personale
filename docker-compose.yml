@@ -183,29 +183,22 @@ services:
       start_period: 15s
 
   # --- DDNS updater (aggiorna il record DNS quando cambia l'IP pubblico) ---
-  # La configurazione effettiva va in ${CONFIG_DIR}/ddclient/ddclient.conf.
-  # Il container linuxserver/ddclient crea un file di esempio al primo avvio:
-  #   docker compose run --rm ddclient cat /config/ddclient.conf
-  # Personalizzarlo con il provider scelto (es. DuckDNS, Cloudflare, No-IP).
-  # Esempio per DuckDNS:
-  #   daemon=300
-  #   protocol=duckdns
-  #   login=token
-  #   password=<DUCKDNS_TOKEN>
-  #   <tuo-sottodominio>.duckdns.org
-  # Esempio per Cloudflare:
-  #   protocol=cloudflare
-  #   login=<EMAIL>
-  #   password=<CF_API_TOKEN>
-  #   zone=<DOMAIN>
-  #   <SUBDOMAIN>
+  # Avviare con: docker compose --profile ddns up -d ddclient
+  # Prima generare la config con: scripts/generate-ddclient-conf.sh
   #
+  # Il servizio usa un Compose profile opzionale ("ddns") per evitare che
+  # parta automaticamente con "docker compose up -d" senza una config valida
+  # (il container crasherebbe in loop se ddclient.conf non esiste o e' vuoto).
+  #
+  # La configurazione effettiva va in ${CONFIG_DIR}/ddclient/ddclient.conf.
   # Healthcheck: ddclient non espone endpoint HTTP, quindi non è possibile
   # verificare la salute tramite curl. Il container è considerato sano se
   # il processo ddclient è in esecuzione; Docker lo rileva già tramite
   # la policy restart=unless-stopped. Un healthcheck basato su pgrep
   # sarebbe inaffidabile perché dipende dal PID namespace del container.
   ddclient:
+    profiles:
+      - ddns
     image: linuxserver/ddclient:latest
     container_name: ddclient
     environment:
