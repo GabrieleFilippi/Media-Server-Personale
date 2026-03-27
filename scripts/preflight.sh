@@ -220,38 +220,38 @@ else
     check_warn "tailscale0 non trovata — installa e avvia Tailscale prima di applicare il firewall"
 fi
 
-# IP pubblico accessibile
-PUBLIC_IP=""
+# IPv4 pubblico accessibile
+PUBLIC_IPV4=""
 if command -v curl &>/dev/null; then
-    PUBLIC_IP="$(curl -s --max-time 5 ifconfig.me 2>/dev/null || true)"
-    if [[ -n "${PUBLIC_IP}" ]]; then
-        check_ok "IP pubblico accessibile: ${PUBLIC_IP}"
+    PUBLIC_IPV4="$(curl -4 -s --max-time 5 ifconfig.me 2>/dev/null || true)"
+    if [[ -n "${PUBLIC_IPV4}" ]]; then
+        check_ok "IPv4 pubblico accessibile: ${PUBLIC_IPV4}"
     else
-        check_warn "Impossibile recuperare l'IP pubblico da ifconfig.me (timeout o nessuna connessione)"
+        check_warn "Impossibile recuperare l'IPv4 pubblico da ifconfig.me (timeout o nessuna connessione)"
     fi
 else
-    check_warn "curl non disponibile — impossibile verificare IP pubblico"
+    check_warn "curl non disponibile — impossibile verificare l'IPv4 pubblico"
 fi
 
-# Check CGNAT: confronta IP WAN del router con IP pubblico
+# Check CGNAT: confronta IP WAN del router con IPv4 pubblico
 # Il gateway predefinito è presumibilmente il router
 GATEWAY_IP=""
 if command -v ip &>/dev/null; then
     GATEWAY_IP="$(ip route show default 2>/dev/null | awk '/default/ { print $3; exit }' || true)"
 fi
 
-if [[ -n "${PUBLIC_IP}" && -n "${GATEWAY_IP}" ]]; then
+if [[ -n "${PUBLIC_IPV4}" && -n "${GATEWAY_IP}" ]]; then
     # Recupera IP WAN del router (molti router espongono /status o simili — non standard)
     # Non possiamo farlo in modo affidabile via script generico: emetti WARN con istruzioni
     check_warn "Check CGNAT: verifica manuale richiesta."
-    echo "         IP pubblico rilevato: ${PUBLIC_IP}"
+    echo "         IPv4 pubblico rilevato: ${PUBLIC_IPV4}"
     echo "         Gateway locale:       ${GATEWAY_IP}"
-    echo "         Accedi al pannello del router e verifica che l'IP WAN corrisponda a ${PUBLIC_IP}."
+    echo "         Accedi al pannello del router e verifica che l'IPv4 WAN corrisponda a ${PUBLIC_IPV4}."
     echo "         Se l'IP WAN del router è nel range 100.64.0.0/10 o 10.0.0.0/8 sei dietro CGNAT"
     echo "         e il port-forwarding non funzionerà — usa solo Tailscale per l'accesso esterno."
 else
     check_warn "Check CGNAT impossibile da verificare automaticamente."
-    echo "         Verifica manualmente: l'IP WAN del router deve corrispondere all'IP pubblico."
+    echo "         Verifica manualmente: l'IPv4 WAN del router deve corrispondere all'IPv4 pubblico."
     echo "         Se sei dietro CGNAT il port-forwarding non funzionerà."
 fi
 
@@ -288,8 +288,8 @@ if [[ -n "${DOMAIN}" && "${DOMAIN}" != "jellyfin.example.com" ]]; then
         DNS_RESULT="$(dig +short A "${DOMAIN}" 2>/dev/null | head -1 || true)"
         if [[ -n "${DNS_RESULT}" ]]; then
             check_ok "DNS: ${DOMAIN} risolve a ${DNS_RESULT}"
-            if [[ -n "${PUBLIC_IP}" && "${DNS_RESULT}" != "${PUBLIC_IP}" ]]; then
-                check_warn "DNS: ${DOMAIN} risolve a ${DNS_RESULT} ma l'IP pubblico è ${PUBLIC_IP} — aggiorna il record DNS o il DDNS"
+            if [[ -n "${PUBLIC_IPV4}" && "${DNS_RESULT}" != "${PUBLIC_IPV4}" ]]; then
+                check_warn "DNS: ${DOMAIN} risolve a ${DNS_RESULT} ma l'IPv4 pubblico è ${PUBLIC_IPV4} — aggiorna il record DNS o il DDNS"
             fi
         else
             check_warn "DNS: ${DOMAIN} non risolve ancora — configura il record A o aspetta la propagazione DDNS"

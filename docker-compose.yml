@@ -165,6 +165,9 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ${CONFIG_DIR}/caddy/data:/data

@@ -116,7 +116,7 @@ Wants=tailscaled.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/home/gabbo/MediaServer/scripts/firewall-setup.sh
+ExecStart=/usr/bin/bash /home/gabbo/MediaServer/scripts/firewall-setup.sh
 ExecStop=/usr/sbin/nft delete table inet mediaserver
 [Install]
 WantedBy=multi-user.target
@@ -156,10 +156,11 @@ Tre sotto-passi in sequenza rigorosa. L'ordine conta.
 
 **Perché:** Senza Known Proxies, Jellyfin vede l'IP di Caddy (es. `172.18.0.2`) in ogni richiesta invece dell'IP reale del client. Conseguenza: log inutili e fail2ban che banna Caddy stesso (= blocca tutti).
 
-1. Apri `http://<TAILSCALE_IP>:8096` → **Dashboard → Networking**
+1. Apri `https://<DOMAIN>` e fai login come admin → **Dashboard → Networking**
+   > In questo stack Jellyfin non espone `8096` sull'host/Tailscale: l'accesso passa da Caddy.
 2. Trova la subnet di Caddy:
    ```bash
-   docker network inspect mediaserver-public | grep Subnet
+   docker network inspect mediaserver-public --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
    ```
 3. Incolla nel campo **Known Proxies** e salva
 4. Abilita **Allow remote connections**

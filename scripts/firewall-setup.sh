@@ -45,7 +45,7 @@
 #       [Service]
 #       Type=oneshot
 #       RemainAfterExit=yes
-#       ExecStart=/home/gabbo/MediaServer/scripts/firewall-setup.sh
+#       ExecStart=/usr/bin/bash /home/gabbo/MediaServer/scripts/firewall-setup.sh
 #       ExecStop=/usr/sbin/nft delete table inet mediaserver
 #       [Install]
 #       WantedBy=multi-user.target
