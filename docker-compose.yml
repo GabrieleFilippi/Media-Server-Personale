@@ -5,19 +5,20 @@ services:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
     environment:
-      - JELLYFIN_PublishedServerUrl=${HOSTNAME:-localhost}
+      - JELLYFIN_PublishedServerUrl=https://${DOMAIN:?DOMAIN must be set}
     volumes:
       - ${CONFIG_DIR}/jellyfin:/config
       - ${MOVIES_DIR}:/media/movies:ro
       - ${TV_DIR}:/media/tv:ro
-    ports:
-      - "8096:8096"
     restart: unless-stopped
     networks:
-      - mediaserver
-    depends_on:
-      - radarr
-      - sonarr
+      - public
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8096/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # --- Film (automazione) ---
   radarr:
@@ -32,13 +33,21 @@ services:
       - ${DOWNLOADS_DIR}:/downloads
       - ${MOVIES_DIR}:/movies
     ports:
-      - "7878:7878"
+      - "${TAILSCALE_IP:?TAILSCALE_IP must be set}:7878:7878"
     restart: unless-stopped
     networks:
-      - mediaserver
+      - private
     depends_on:
-      - qbittorrent
-      - prowlarr
+      qbittorrent:
+        condition: service_healthy
+      prowlarr:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:7878/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # --- Serie TV (automazione) ---
   sonarr:
@@ -53,13 +62,21 @@ services:
       - ${DOWNLOADS_DIR}:/downloads
       - ${TV_DIR}:/tv
     ports:
-      - "8989:8989"
+      - "${TAILSCALE_IP:?TAILSCALE_IP must be set}:8989:8989"
     restart: unless-stopped
     networks:
-      - mediaserver
+      - private
     depends_on:
-      - qbittorrent
-      - prowlarr
+      qbittorrent:
+        condition: service_healthy
+      prowlarr:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8989/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # --- Indexer Manager ---
   prowlarr:
@@ -72,15 +89,22 @@ services:
     volumes:
       - ${CONFIG_DIR}/prowlarr:/config
     ports:
-      - "9696:9696"
+      - "${TAILSCALE_IP:?TAILSCALE_IP must be set}:9696:9696"
     dns:
       - 1.1.1.1
       - 8.8.8.8
     restart: unless-stopped
     networks:
-      - mediaserver
+      - private
     depends_on:
-      - flaresolverr
+      flaresolverr:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9696/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # --- Client Torrent ---
   qbittorrent:
@@ -95,7 +119,7 @@ services:
       - ${CONFIG_DIR}/qbittorrent:/config
       - ${DOWNLOADS_DIR}:/downloads
     ports:
-      - "8080:8080"
+      - "${TAILSCALE_IP:?TAILSCALE_IP must be set}:8080:8080"
       - "6881:6881"
       - "6881:6881/udp"
     dns:
@@ -103,7 +127,13 @@ services:
       - 8.8.8.8
     restart: unless-stopped
     networks:
-      - mediaserver
+      - private
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # --- Bypass Cloudflare per indexer ---
   flaresolverr:
@@ -112,16 +142,50 @@ services:
     environment:
       - LOG_LEVEL=info
       - TZ=${TZ}
-    ports:
-      - "8191:8191"
     dns:
       - 1.1.1.1
       - 8.8.8.8
     restart: unless-stopped
     networks:
-      - mediaserver
+      - private
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8191/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # --- Reverse proxy ---
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    environment:
+      - DOMAIN=${DOMAIN:?DOMAIN must be set}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${CONFIG_DIR}/caddy/data:/data
+      - ${CONFIG_DIR}/caddy/config:/config
+      - ${CONFIG_DIR}/caddy/logs:/var/log/caddy
+    restart: unless-stopped
+    networks:
+      - public
+    depends_on:
+      - jellyfin
+    healthcheck:
+      test: ["CMD-SHELL", "caddy validate --config /etc/caddy/Caddyfile || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
 networks:
-  mediaserver:
-    name: mediaserver
+  public:
+    name: mediaserver-public
+    driver: bridge
+  private:
+    name: mediaserver-private
     driver: bridge
