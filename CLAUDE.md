@@ -12,7 +12,7 @@ The stack has two layers:
 
 **Public (rete `mediaserver-public`)**
 ```
-Internet → Caddy (reverse proxy, :80/:443)
+Internet → Caddy (reverse proxy, :${HTTPS_PORT:-443}, DNS-01 TLS via DuckDNS)
               └── Jellyfin (streaming UI, porta non esposta direttamente)
 ```
 
@@ -30,9 +30,10 @@ Radarr (movie automation, :7878) + Sonarr (TV automation, :8989)
 ## Key Files
 
 - `docker-compose.yml` — defines all 7 services, their volumes, ports, and dependencies
-- `Caddyfile` — configurazione Caddy reverse proxy (dominio, TLS, header sicurezza, log)
+- `Caddyfile` — configurazione Caddy reverse proxy (dominio, TLS DNS-01, header sicurezza, log)
+- `caddy/Dockerfile` — custom Caddy build con plugin DuckDNS per DNS-01 challenge
 - `.env.example` — template for environment config (copy to `.env`)
-- `.env` — actual config (gitignored): sets `MEDIA_ROOT`, `PUID`/`PGID`, `TZ`, `CONFIG_DIR`, `TAILSCALE_IP`, `DOMAIN`
+- `.env` — actual config (gitignored): sets `MEDIA_ROOT`, `PUID`/`PGID`, `TZ`, `CONFIG_DIR`, `TAILSCALE_IP`, `DOMAIN`, `HTTPS_PORT`, `DUCKDNS_API_TOKEN`
 
 ## Common Commands
 
@@ -41,7 +42,8 @@ docker compose up -d          # Start all services
 docker compose down            # Stop all services
 docker compose ps              # Check container status
 docker compose logs -f <svc>   # Tail logs for a service (caddy, jellyfin, radarr, sonarr, prowlarr, qbittorrent, flaresolverr)
-docker compose pull && docker compose up -d   # Update all images
+docker compose up -d --build                   # Rebuild (Caddy custom) and start
+docker compose pull && docker compose up -d    # Update all images
 ```
 
 ## Volume Layout

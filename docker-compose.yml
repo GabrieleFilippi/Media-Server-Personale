@@ -5,7 +5,7 @@ services:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
     environment:
-      - JELLYFIN_PublishedServerUrl=https://${DOMAIN:?DOMAIN must be set}
+      - JELLYFIN_PublishedServerUrl=https://${DOMAIN:?DOMAIN must be set}:${HTTPS_PORT:-443}
     volumes:
       - ${CONFIG_DIR}/jellyfin:/config
       - ${MOVIES_DIR}:/media/movies:ro
@@ -157,14 +157,16 @@ services:
 
   # --- Reverse proxy ---
   caddy:
-    image: caddy:2-alpine
+    build: ./caddy
+    image: caddy-duckdns:local
     container_name: caddy
     environment:
       - DOMAIN=${DOMAIN:?DOMAIN must be set}
+      - DUCKDNS_API_TOKEN=${DUCKDNS_API_TOKEN:?DUCKDNS_API_TOKEN must be set}
+      - HTTPS_PORT=${HTTPS_PORT:-443}
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
+      - "${HTTPS_PORT:-443}:${HTTPS_PORT:-443}/udp"
     dns:
       - 1.1.1.1
       - 8.8.8.8

@@ -1,3 +1,12 @@
+{
+    servers {
+        protocols h1 h2
+    }
+    https_port {$HTTPS_PORT:443}
+    auto_https disable_redirects
+    acme_dns duckdns {$DUCKDNS_API_TOKEN}
+}
+
 {$DOMAIN} {
     encode gzip
 

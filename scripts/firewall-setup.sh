@@ -15,6 +15,12 @@
 #   Questo script usa una tabella nft separata ("inet mediaserver") per non
 #   interferire con Docker. NON viene fatto flush del ruleset globale.
 #
+#   IMPORTANTE: i container possono interrogare il resolver dell'host tramite
+#   il bridge Docker (tipicamente docker0 -> 172.17.0.1:53), specialmente
+#   durante i build. Con una policy input=drop bisogna permettere DNS dal
+#   bridge Docker verso l'host, altrimenti build/pull possono fallire per
+#   timeout DNS.
+#
 #   IMPORTANTE: la chain "forward" con policy drop NON viene usata perche'
 #   interferirebbe con il forwarding Docker dei container. Il traffico verso
 #   i container e' filtrato da Docker tramite la chain DOCKER-USER (iptables).
@@ -53,6 +59,21 @@
 
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Leggi HTTPS_PORT da .env (default: 443)
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HTTPS_PORT=443
+if [[ -f "${SCRIPT_DIR}/../.env" ]]; then
+    while IFS='=' read -r key value; do
+        [[ -z "${key}" || "${key}" =~ ^[[:space:]]*# ]] && continue
+        key="${key// /}"
+        case "${key}" in
+            HTTPS_PORT) HTTPS_PORT="${value}" ;;
+        esac
+    done < "${SCRIPT_DIR}/../.env"
+fi
+
 # Verifica che tailscale0 esista; avverte ma non blocca
 if ! ip link show tailscale0 &>/dev/null; then
     echo "ATTENZIONE: interfaccia tailscale0 non trovata." >&2
@@ -61,12 +82,13 @@ if ! ip link show tailscale0 &>/dev/null; then
     echo "  Continuo comunque con l'applicazione delle regole..." >&2
 fi
 
+echo "Porta HTTPS configurata: ${HTTPS_PORT}"
 echo "Applicazione regole nftables (tabella inet mediaserver)..."
 
 # Rimuovi solo la tabella mediaserver se esiste, senza toccare le tabelle Docker
 nft delete table inet mediaserver 2>/dev/null || true
 
-nft -f - <<'NFTABLES'
+nft -f - <<NFTABLES
 # ============================================================
 # Tabella inet mediaserver — traffico host (IPv4 + IPv6)
 #
@@ -93,14 +115,21 @@ table inet mediaserver {
         # Connessioni non valide: scarta esplicitamente
         ct state invalid drop comment "conntrack invalid"
 
+        # Docker bridge -> host DNS
+        # Necessario per consentire ai container (e ai build xcaddy/go) di
+        # risolvere nomi via il resolver dell'host su 172.17.0.1:53.
+        iifname "docker0" udp dport 53 accept comment "Docker bridge DNS UDP"
+        iifname "docker0" tcp dport 53 accept comment "Docker bridge DNS TCP"
+
         # SSH — accesso da qualsiasi IP
         # Per limitare solo a Tailscale sostituire con:
         #   iifname "tailscale0" tcp dport 22 accept
         tcp dport 22 accept comment "SSH"
 
-        # HTTP/HTTPS — per Caddy (reverse proxy pubblico di Jellyfin)
-        tcp dport { 80, 443 } accept comment "HTTP/HTTPS Caddy"
-        udp dport 443 accept comment "HTTPS/QUIC Caddy"
+        # HTTPS — per Caddy (reverse proxy pubblico di Jellyfin)
+        # Porta configurabile via HTTPS_PORT in .env (default 443, usa 41443 per iliadbox)
+        tcp dport ${HTTPS_PORT} accept comment "HTTPS Caddy (porta ${HTTPS_PORT})"
+        udp dport ${HTTPS_PORT} accept comment "HTTPS/QUIC Caddy (porta ${HTTPS_PORT})"
 
         # Tailscale — tutto il traffico sull'interfaccia VPN
         # Permette accesso ai servizi admin (Radarr, Sonarr, ecc.) via Tailscale

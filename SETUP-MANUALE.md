@@ -83,9 +83,13 @@ tailscale ip -4          # annota l'IP — ti serve al passo 5
 Aggiungi al tuo `.env` solo le variabili nuove:
 
 ```bash
-# Aggiungi queste due righe (i valori reali, non i placeholder)
+# Aggiungi queste righe (i valori reali, non i placeholder)
 TAILSCALE_IP=<output di tailscale ip -4>
 DOMAIN=<il tuo dominio dal passo 3>
+
+# HTTPS su porta alta (workaround iliadbox — vedi passo 7)
+HTTPS_PORT=41443
+DUCKDNS_API_TOKEN=<il tuo token da duckdns.org>
 ```
 
 Poi verifica:
@@ -99,7 +103,7 @@ Risolvi tutti i `FAIL` prima di continuare.
 
 ## 6. Firewall
 
-**Perché:** Il server attualmente accetta connessioni su tutte le porte. Dopo l'esposizione su Internet deve passare solo: SSH, HTTP/HTTPS (Caddy), Tailscale (admin), e 6881 (BitTorrent). Tutto il resto viene droppato.
+**Perché:** Il server attualmente accetta connessioni su tutte le porte. Dopo l'esposizione su Internet deve passare solo: SSH, HTTPS su porta alta (Caddy), Tailscale (admin), e 6881 (BitTorrent). Tutto il resto viene droppato. Lo script legge `HTTPS_PORT` dal `.env` automaticamente.
 
 ```bash
 sudo pacman -S nftables    # se non già installato
@@ -129,22 +133,26 @@ sudo systemctl enable --now firewall-mediaserver
 
 ## 7. Port-forward e riavvio stack
 
-**Perché — port-forward:** il router deve sapere dove mandare le connessioni in arrivo su 80/443. La porta 80 serve a Caddy per il challenge ACME (emissione certificato Let's Encrypt). La 443 è il traffico HTTPS di Jellyfin.
+**Perché — port-forward:** il router deve sapere dove mandare le connessioni HTTPS in arrivo. Caddy usa il challenge DNS-01 (via API DuckDNS) per emettere il certificato Let's Encrypt, quindi **la porta 80 non è necessaria**.
+
+> **Nota iliadbox:** il router iliadbox permette port-forwarding solo su porte > 40960. Per questo usiamo la porta 41443 (configurabile in `.env` come `HTTPS_PORT`). Caddy ottiene il certificato TLS tramite DNS-01 challenge, che non richiede porte in ingresso.
 
 Nel pannello del router, aggiungi:
 
 | Porta | Protocollo | Destinazione |
 |---|---|---|
-| 80 | TCP | IP LAN del server |
-| 443 | TCP | IP LAN del server |
+| 41443 | TCP | IP LAN del server |
+| 41443 | UDP | IP LAN del server (opzionale, per HTTP/3 QUIC) |
 
-Poi riavvia lo stack per applicare le modifiche al compose (nuove reti, Caddy, healthcheck):
+Poi riavvia lo stack (il primo avvio compila l'immagine Caddy custom con il plugin DuckDNS):
 ```bash
-docker compose down && docker compose up -d
+docker compose down && docker compose up -d --build
 docker compose ps    # attendi healthy su tutti i container
 ```
 
-Al primo avvio Caddy emette il certificato TLS automaticamente. Se fallisce, controlla `docker compose logs caddy` — tipicamente è un problema DNS o porta 80 non raggiungibile dall'esterno.
+Al primo avvio Caddy emette il certificato TLS automaticamente via DNS-01. Se fallisce, controlla `docker compose logs caddy` — tipicamente è un problema di token DuckDNS o DNS che non risolve.
+
+> **Revert a porta standard:** se in futuro ottieni IPv4 Full Stack da Iliad, rimuovi `HTTPS_PORT` dal `.env`, rimuovi il blocco globale `{ ... }` dal `Caddyfile`, e cambia il port-forward a 443. Caddy tornerà automaticamente a usare HTTP-01 challenge su porta standard.
 
 ---
 
@@ -156,8 +164,8 @@ Tre sotto-passi in sequenza rigorosa. L'ordine conta.
 
 **Perché:** Senza Known Proxies, Jellyfin vede l'IP di Caddy (es. `172.18.0.2`) in ogni richiesta invece dell'IP reale del client. Conseguenza: log inutili e fail2ban che banna Caddy stesso (= blocca tutti).
 
-1. Apri `https://<DOMAIN>` e fai login come admin → **Dashboard → Networking**
-   > In questo stack Jellyfin non espone `8096` sull'host/Tailscale: l'accesso passa da Caddy.
+1. Apri `https://<DOMAIN>:41443` e fai login come admin → **Dashboard → Networking**
+   > In questo stack Jellyfin non espone `8096` sull'host/Tailscale: l'accesso passa da Caddy sulla porta configurata in `HTTPS_PORT`.
 2. Trova la subnet di Caddy:
    ```bash
    docker network inspect mediaserver-public --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
@@ -190,7 +198,7 @@ sudo fail2ban-client status    # deve mostrare caddy-auth e jellyfin-auth attive
 
 Da smartphone (WiFi spento, solo dati mobili):
 
-1. `https://tuodominio.com` — lucchetto verde
+1. `https://tuodominio.com:41443` — lucchetto verde
 2. Login
 3. Avvia un video — direct play
 4. Forza transcoding — deve funzionare
@@ -202,7 +210,7 @@ Da smartphone (WiFi spento, solo dati mobili):
 | Problema | Diagnosi | Fix |
 |---|---|---|
 | `https://dominio` non risponde | `dig +short A dominio` — se non risolve: DNS/DDNS non configurato. Se risolve ma non risponde: port-forward sbagliato o CGNAT | Verifica DNS, poi verifica port-forward nel router |
-| Caddy non emette il certificato | `docker compose logs caddy` — cerca errori ACME. Tipico: porta 80 bloccata o DNS che non punta al server | Verifica che porta 80 sia raggiungibile dall'esterno |
+| Caddy non emette il certificato (DNS-01) | `docker compose logs caddy` — cerca errori "dns" o "acme". Tipico: token DuckDNS sbagliato o scaduto | Verifica `DUCKDNS_API_TOKEN` in `.env`. Test manuale: `curl "https://www.duckdns.org/update?domains=gabbojellyfin&token=TOKEN&txt=test"` — deve rispondere "OK" |
 | Jellyfin risponde ma 502 | Caddy raggiunge Jellyfin? `docker compose logs caddy` + `docker compose ps jellyfin` | Verifica che Jellyfin sia healthy e sulla rete `public` |
 | Banned da fail2ban per errore | `sudo fail2ban-client set caddy-auth unbanip <tuo-ip>` | Per emergenze: `sudo fail2ban-client stop` |
 | Lockout firewall (SSH non risponde) | Accesso fisico alla macchina, poi: `sudo nft delete table inet mediaserver` | Rimuove il firewall, poi riesegui `firewall-setup.sh` dopo aver corretto |

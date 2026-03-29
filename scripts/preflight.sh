@@ -61,6 +61,8 @@ ENV_FILE="${PROJECT_ROOT}/.env"
 TAILSCALE_IP=""
 DOMAIN=""
 CONFIG_DIR=""
+HTTPS_PORT=""
+DUCKDNS_API_TOKEN=""
 
 # ---------------------------------------------------------------------------
 # Sezione 1: Variabili .env
@@ -76,9 +78,11 @@ if [[ -f "${ENV_FILE}" ]]; then
         [[ -z "${key}" || "${key}" =~ ^[[:space:]]*# ]] && continue
         key="${key// /}"
         case "${key}" in
-            TAILSCALE_IP) TAILSCALE_IP="${value}" ;;
-            DOMAIN)       DOMAIN="${value}" ;;
-            CONFIG_DIR)   CONFIG_DIR="${value}" ;;
+            TAILSCALE_IP)      TAILSCALE_IP="${value}" ;;
+            DOMAIN)            DOMAIN="${value}" ;;
+            CONFIG_DIR)        CONFIG_DIR="${value}" ;;
+            HTTPS_PORT)        HTTPS_PORT="${value}" ;;
+            DUCKDNS_API_TOKEN) DUCKDNS_API_TOKEN="${value}" ;;
         esac
     done < "${ENV_FILE}"
 else
@@ -101,6 +105,15 @@ elif [[ "${DOMAIN}" == "jellyfin.example.com" ]]; then
     check_fail "DOMAIN è ancora il placeholder (jellyfin.example.com) — imposta il tuo dominio reale"
 else
     check_ok "DOMAIN settato: ${DOMAIN}"
+fi
+
+# DUCKDNS_API_TOKEN (obbligatorio se HTTPS_PORT non-standard)
+if [[ -n "${HTTPS_PORT}" && "${HTTPS_PORT}" != "443" ]]; then
+    if [[ -z "${DUCKDNS_API_TOKEN}" ]]; then
+        check_fail "DUCKDNS_API_TOKEN non settato in .env — necessario per DNS-01 challenge con porta ${HTTPS_PORT}"
+    else
+        check_ok "DUCKDNS_API_TOKEN settato (DNS-01 challenge per porta ${HTTPS_PORT})"
+    fi
 fi
 
 # CONFIG_DIR
@@ -196,21 +209,16 @@ done
 # ---------------------------------------------------------------------------
 section "Networking"
 
-# Porta 80 libera
+# Porta HTTPS configurata
+CHECK_PORT="${HTTPS_PORT:-443}"
 if command -v ss &>/dev/null; then
-    if ss -tlnp 2>/dev/null | grep -qE ':80\b'; then
-        check_fail "Porta 80 già in uso da un altro processo — controlla con: ss -tlnp | grep :80"
+    if ss -tlnp 2>/dev/null | grep -qE ":${CHECK_PORT}\b"; then
+        check_fail "Porta ${CHECK_PORT} già in uso — controlla con: ss -tlnp | grep :${CHECK_PORT}"
     else
-        check_ok "Porta 80 libera"
-    fi
-    # Porta 443 libera
-    if ss -tlnp 2>/dev/null | grep -qE ':443\b'; then
-        check_fail "Porta 443 già in uso da un altro processo — controlla con: ss -tlnp | grep :443"
-    else
-        check_ok "Porta 443 libera"
+        check_ok "Porta HTTPS ${CHECK_PORT} libera"
     fi
 else
-    check_warn "ss non disponibile — impossibile verificare se le porte 80/443 sono libere"
+    check_warn "ss non disponibile — impossibile verificare porta ${CHECK_PORT}"
 fi
 
 # Interface tailscale0
